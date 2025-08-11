@@ -72,32 +72,58 @@ const samplePath = [
   [-6.90, 113.25]
 ];
 
-const motionObject = L.motion.polyline(samplePath, {
-    auto: false, // Start manually
-    duration: 3000, // 3 seconds
+let motionObject;
+let currentOptions = {
+    auto: false,
+    duration: 3000,
     color: '#ff0000',
     width: 5
-}, motionManager);
+};
 
-motionObject.on('ended', () => {
-    console.log('Animation ended');
-});
+function createMotion() {
+    // If there's an old object, we need to remove it from the manager
+    if (motionObject) {
+        motionManager.remove(motionObject._obj.id);
+    }
+
+    motionObject = L.motion.polyline(samplePath, currentOptions, motionManager);
+    motionObject.on('ended', () => {
+        console.log('Animation ended');
+    });
+}
+
 
 /* ---------------------------
    Demo controls
    --------------------------- */
-document.getElementById('start').onclick = () => motionObject.motionStart();
-document.getElementById('pause').onclick = () => motionObject.motionPause();
-document.getElementById('resume').onclick = () => motionObject.motionResume();
-document.getElementById('stop').onclick = () => motionObject.motionEnd();
-document.getElementById('duration-5s').onclick = () => motionObject.motionDuration(5000);
-document.getElementById('duration-10s').onclick = () => motionObject.motionDuration(10000);
+document.getElementById('start').onclick = () => {
+    // Always recreate on start to begin from the initial point
+    createMotion();
+    motionObject.motionStart();
+};
+document.getElementById('pause').onclick = () => motionObject && motionObject.motionPause();
+document.getElementById('resume').onclick = () => motionObject && motionObject.motionResume();
+document.getElementById('stop').onclick = () => motionObject && motionObject.motionEnd();
+
+document.getElementById('duration-5s').onclick = () => {
+    currentOptions.duration = 5000;
+    createMotion(); // Re-create to apply new duration
+};
+document.getElementById('duration-10s').onclick = () => {
+    currentOptions.duration = 10000;
+    createMotion(); // Re-create to apply new duration
+};
 document.getElementById('color-red').onclick = () => {
-    motionObject._obj.options.color = '#ff0000';
+    currentOptions.color = '#ff0000';
+    createMotion(); // Re-create to apply new color
 };
 document.getElementById('color-blue').onclick = () => {
-    motionObject._obj.options.color = '#0000ff';
+    currentOptions.color = '#0000ff';
+    createMotion(); // Re-create to apply new color
 };
+
+// Initial creation
+createMotion();
 
 </script>
 </body>

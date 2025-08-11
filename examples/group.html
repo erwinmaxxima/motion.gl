@@ -12,6 +12,7 @@
 
   <!-- Motion Library -->
   <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
 
   <style>
     body { margin:0; padding:0; font-family: system-ui, sans-serif; }
@@ -54,7 +55,7 @@ map.addControl(overlay);
 const motionManager = new MotionManager(overlay);
 
 /* ---------------------------
-   Create Motion Objects
+   Sample Paths
    --------------------------- */
 const polylinePath = [
   [-7.1, 112.8],
@@ -68,28 +69,51 @@ const polygonPath = [
   [-7.2, 112.9]
 ];
 
-const polyline = L.motion.polyline(polylinePath, {
-    duration: 6000,
-    color: '#ff0000'
-}, motionManager);
+/* ---------------------------
+   Create and Control Motion
+   --------------------------- */
+let motionGroup;
+let polyline, polygon;
 
-const polygon = L.motion.polygon([polygonPath], {
-    duration: 6000,
-    color: '#0000ff'
-}, motionManager);
+function createAndGroupMotions() {
+    // If old objects exist, remove them from the manager
+    if (polyline) motionManager.remove(polyline._obj.id);
+    if (polygon) motionManager.remove(polygon._obj.id);
+
+    // Create new motion objects
+    polyline = L.motion.polyline(polylinePath, {
+        duration: 6000,
+        color: '#ff0000'
+    }, motionManager);
+
+    polygon = L.motion.path(polygonPath, { // Changed from polygon to path
+        duration: 6000,
+        color: '#0000ff'
+    }, motionManager);
+
+    // Group them
+    motionGroup = L.motion.group([polyline, polygon]);
+    motionGroup.setLoop(true);
+}
 
 /* ---------------------------
-   Create and Control Group
+   Setup Controls
    --------------------------- */
-const group = L.motion.group([polyline, polygon]);
-group.setLoop(true);
+document.getElementById('start').onclick = () => {
+    // Re-create and start from beginning
+    createAndGroupMotions();
+    motionGroup.motionStart();
+};
+document.getElementById('pause').onclick = () => {
+    if (motionGroup) motionGroup.motionPause();
+};
+document.getElementById('resume').onclick = () => {
+    if (motionGroup) motionGroup.motionResume();
+};
 
-document.getElementById('start').onclick = () => group.motionStart();
-document.getElementById('pause').onclick = () => group.motionPause();
-document.getElementById('resume').onclick = () => group.motionResume();
-
-// Start automatically
-group.motionStart();
+// Initial creation and start
+createAndGroupMotions();
+motionGroup.motionStart();
 
 </script>
 </body>
