@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sequence - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    button { margin:4px 2px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Sequence Controls</strong><br>
+    <button id="start">Start Sequence</button>
+    <button id="add-layer">Add Layer</button>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.2],
+  zoom: 9
+});
+
+// Deck.gl MapboxOverlay
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay);
+
+/* ---------------------------
+   Create Motion Objects
+   --------------------------- */
+const path1 = [
+  [-7.1, 112.8],
+  [-7.0, 112.9],
+  [-6.9, 113.0]
+];
+
+const path2 = [
+  [-6.9, 113.0],
+  [-7.0, 113.1],
+  [-7.1, 113.2]
+];
+
+const path3 = [
+    [-7.1, 113.2],
+    [-7.2, 113.1],
+    [-7.3, 113.0]
+];
+
+const motion1 = L.motion.polyline(path1, {
+    duration: 3000,
+    color: '#ff0000'
+}, motionManager);
+
+const motion2 = L.motion.polyline(path2, {
+    duration: 3000,
+    color: '#00ff00'
+}, motionManager);
+
+const motion3 = L.motion.polyline(path3, {
+    duration: 3000,
+    color: '#0000ff'
+}, motionManager);
+
+
+/* ---------------------------
+   Create and Control Sequence
+   --------------------------- */
+const sequence = L.motion.seq([motion1, motion2]);
+
+sequence.on('section', (e) => {
+    console.log(`Section ${e.index} ended.`);
+});
+
+sequence.on('ended', () => {
+    console.log('Sequence ended.');
+});
+
+document.getElementById('start').onclick = () => sequence.motionStart();
+document.getElementById('add-layer').onclick = () => {
+    sequence.addLayer(motion3, true);
+};
+
+</script>
+</body>
+</html>

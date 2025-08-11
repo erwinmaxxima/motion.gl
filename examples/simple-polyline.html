@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Polyline - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    button { margin:4px 2px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Controls</strong><br>
+    <button id="start">Start</button>
+    <button id="pause">Pause</button>
+    <button id="resume">Resume</button>
+    <button id="stop">Stop</button>
+    <br>
+    <button id="duration-5s">5s duration</button>
+    <button id="duration-10s">10s duration</button>
+    <br>
+    <button id="color-red">Red Path</button>
+    <button id="color-blue">Blue Path</button>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.1],
+  zoom: 8
+});
+
+// Deck.gl MapboxOverlay
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay);
+
+/* ---------------------------
+   Sample: add a simple plane path
+   --------------------------- */
+const samplePath = [
+  [-7.10, 112.80],
+  [-7.05, 112.90],
+  [-7.00, 113.05],
+  [-6.95, 113.15],
+  [-6.90, 113.25]
+];
+
+const motionObject = L.motion.polyline(samplePath, {
+    auto: false, // Start manually
+    duration: 3000, // 3 seconds
+    color: '#ff0000',
+    width: 5
+}, motionManager);
+
+motionObject.on('ended', () => {
+    console.log('Animation ended');
+});
+
+/* ---------------------------
+   Demo controls
+   --------------------------- */
+document.getElementById('start').onclick = () => motionObject.motionStart();
+document.getElementById('pause').onclick = () => motionObject.motionPause();
+document.getElementById('resume').onclick = () => motionObject.motionResume();
+document.getElementById('stop').onclick = () => motionObject.motionEnd();
+document.getElementById('duration-5s').onclick = () => motionObject.motionDuration(5000);
+document.getElementById('duration-10s').onclick = () => motionObject.motionDuration(10000);
+document.getElementById('color-red').onclick = () => {
+    motionObject._obj.options.color = '#ff0000';
+};
+document.getElementById('color-blue').onclick = () => {
+    motionObject._obj.options.color = '#0000ff';
+};
+
+</script>
+</body>
+</html>

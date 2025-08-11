@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Easing - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    select, button { margin:4px 2px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Easing Controls</strong><br>
+    <select id="easing-select"></select>
+    <button id="restart">Restart Animation</button>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.1],
+  zoom: 8
+});
+
+// Deck.gl MapboxOverlay
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay);
+
+/* ---------------------------
+   Sample Path
+   --------------------------- */
+const samplePath = [
+  [-7.10, 112.80],
+  [-7.05, 112.90],
+  [-7.00, 113.05],
+  [-6.95, 113.15],
+  [-6.90, 113.25]
+];
+
+/* ---------------------------
+   Create Motion Object
+   --------------------------- */
+let motionObject = L.motion.polyline(samplePath, {
+    auto: true,
+    duration: 5000,
+    easing: L.Motion.Ease.linear
+}, motionManager);
+motionObject.setLoop(true);
+
+/* ---------------------------
+   Setup Controls
+   --------------------------- */
+const easingSelect = document.getElementById('easing-select');
+for (const ease in L.Motion.Ease) {
+    const option = document.createElement('option');
+    option.value = ease;
+    option.textContent = ease;
+    easingSelect.appendChild(option);
+}
+
+easingSelect.onchange = function() {
+    const selectedEase = this.value;
+    motionObject._obj.options.easing = L.Motion.Ease[selectedEase];
+    // Restart to see the effect from the beginning
+    motionObject.motionStart();
+};
+
+document.getElementById('restart').onclick = () => {
+    motionObject.motionStart();
+};
+
+</script>
+</body>
+</html>

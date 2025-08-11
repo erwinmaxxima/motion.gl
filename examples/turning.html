@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Turning - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+  <script src="../src/motion.pathutil.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    select, button { margin:4px 2px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Turn Radius</strong><br>
+    <select id="turn-select">
+        <option value="null">None (Sharp)</option>
+        <option value="tight">Tight</option>
+        <option value="normal" selected>Normal</option>
+        <option value="loose">Loose</option>
+    </select>
+    <button id="restart">Restart Animation</button>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.2],
+  zoom: 9
+});
+
+// Deck.gl MapboxOverlay
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay);
+
+/* ---------------------------
+   Sample Path with sharp corners
+   --------------------------- */
+const samplePath = [
+  [-7.1, 112.8],
+  [-7.1, 113.0],
+  [-7.3, 113.0],
+  [-7.3, 112.8],
+  [-7.1, 112.8]
+];
+
+/* ---------------------------
+   Create and Control Motion
+   --------------------------- */
+let motionObject;
+
+function createMotion(turnValue) {
+    // If there's an old object, we need to remove it from the manager
+    if (motionObject) {
+        motionManager.remove(motionObject._obj.id);
+    }
+
+    motionObject = L.motion.path(samplePath, {
+        auto: true,
+        duration: 8000,
+        turn: turnValue === 'null' ? null : turnValue,
+        color: '#00ccff'
+    }, motionManager);
+    motionObject.setLoop(true);
+}
+
+
+/* ---------------------------
+   Setup Controls
+   --------------------------- */
+const turnSelect = document.getElementById('turn-select');
+
+turnSelect.onchange = function() {
+    createMotion(this.value);
+};
+
+document.getElementById('restart').onclick = () => {
+    createMotion(turnSelect.value);
+};
+
+// Initial creation
+createMotion('normal');
+
+</script>
+</body>
+</html>
