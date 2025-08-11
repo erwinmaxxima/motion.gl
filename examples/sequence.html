@@ -53,59 +53,57 @@ map.addControl(overlay);
 const motionManager = new MotionManager(overlay);
 
 /* ---------------------------
-   Create Motion Objects
+   Sample Paths
    --------------------------- */
-const path1 = [
-  [-7.1, 112.8],
-  [-7.0, 112.9],
-  [-6.9, 113.0]
-];
-
-const path2 = [
-  [-6.9, 113.0],
-  [-7.0, 113.1],
-  [-7.1, 113.2]
-];
-
-const path3 = [
-    [-7.1, 113.2],
-    [-7.2, 113.1],
-    [-7.3, 113.0]
-];
-
-const motion1 = L.motion.polyline(path1, {
-    duration: 3000,
-    color: '#ff0000'
-}, motionManager);
-
-const motion2 = L.motion.polyline(path2, {
-    duration: 3000,
-    color: '#00ff00'
-}, motionManager);
-
-const motion3 = L.motion.polyline(path3, {
-    duration: 3000,
-    color: '#0000ff'
-}, motionManager);
-
+const path1 = [ [-7.1, 112.8], [-7.0, 112.9], [-6.9, 113.0] ];
+const path2 = [ [-6.9, 113.0], [-7.0, 113.1], [-7.1, 113.2] ];
+const path3 = [ [-7.1, 113.2], [-7.2, 113.1], [-7.3, 113.0] ];
 
 /* ---------------------------
-   Create and Control Sequence
+   Create and Control Motion
    --------------------------- */
-const sequence = L.motion.seq([motion1, motion2]);
+let sequence;
+let motion1, motion2, motion3;
 
-sequence.on('section', (e) => {
-    console.log(`Section ${e.index} ended.`);
-});
+function createSequence() {
+    // Remove old objects if they exist
+    if (motion1) motionManager.remove(motion1._obj.id);
+    if (motion2) motionManager.remove(motion2._obj.id);
+    if (motion3) motionManager.remove(motion3._obj.id);
 
-sequence.on('ended', () => {
-    console.log('Sequence ended.');
-});
+    // Create new motion objects
+    motion1 = L.motion.polyline(path1, { duration: 3000, color: '#ff0000' }, motionManager);
+    motion2 = L.motion.polyline(path2, { duration: 3000, color: '#00ff00' }, motionManager);
+    motion3 = L.motion.polyline(path3, { duration: 3000, color: '#0000ff' }, motionManager);
 
-document.getElementById('start').onclick = () => sequence.motionStart();
-document.getElementById('add-layer').onclick = () => {
-    sequence.addLayer(motion3, true);
+    // Create a new sequence
+    sequence = L.motion.seq([motion1, motion2]);
+
+    sequence.on('section', (e) => {
+        console.log(`Section ${e.index} ended.`);
+    });
+    sequence.on('ended', () => {
+        console.log('Sequence ended.');
+    });
+}
+
+/* ---------------------------
+   Setup Controls
+   --------------------------- */
+document.getElementById('start').onclick = () => {
+    createSequence();
+    sequence.motionStart();
 };
+
+document.getElementById('add-layer').onclick = () => {
+    if (sequence) {
+        // This assumes motion3 has been created by createSequence()
+        sequence.addLayer(motion3, true);
+    }
+};
+
+// Initial setup
+createSequence();
 
 </script>
 </body>

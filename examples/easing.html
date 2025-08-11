@@ -65,14 +65,23 @@ const samplePath = [
 ];
 
 /* ---------------------------
-   Create Motion Object
+   Create and Control Motion
    --------------------------- */
-let motionObject = L.motion.polyline(samplePath, {
-    auto: true,
-    duration: 5000,
-    easing: L.Motion.Ease.linear
-}, motionManager);
-motionObject.setLoop(true);
+let motionObject;
+
+function createMotion(ease) {
+    // If there's an old object, we need to remove it from the manager
+    if (motionObject) {
+        motionManager.remove(motionObject._obj.id);
+    }
+
+    motionObject = L.motion.polyline(samplePath, {
+        auto: true,
+        duration: 5000,
+        easing: L.Motion.Ease[ease]
+    }, motionManager);
+    motionObject.setLoop(true);
+}
 
 /* ---------------------------
    Setup Controls
@@ -82,19 +91,22 @@ for (const ease in L.Motion.Ease) {
     const option = document.createElement('option');
     option.value = ease;
     option.textContent = ease;
+    if (ease === 'linear') {
+        option.selected = true;
+    }
     easingSelect.appendChild(option);
 }
 
 easingSelect.onchange = function() {
-    const selectedEase = this.value;
-    motionObject._obj.options.easing = L.Motion.Ease[selectedEase];
-    // Restart to see the effect from the beginning
-    motionObject.motionStart();
+    createMotion(this.value);
 };
 
 document.getElementById('restart').onclick = () => {
-    motionObject.motionStart();
+    createMotion(easingSelect.value);
 };
+
+// Initial creation
+createMotion('linear');
 
 </script>
 </body>
