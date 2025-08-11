@@ -247,6 +247,7 @@ class MotionManager {
     this.objects = new Map();
     this._lastTs = null;
     this._running = false;
+    this._lastHeading = 0;
     this._startLoop();
   }
 
@@ -307,7 +308,19 @@ class MotionManager {
         getPosition: d => d.position,
         getSize: this.options.getSize,
         sizeScale: 1,
-        getAngle: d => d.heading || 0,
+        getAngle: d => {
+          const newHeading = d.heading || 0;
+          let delta = newHeading - this._lastHeading;
+
+          // Ensure smooth transition over 360/0 degree boundary
+          if (delta > 180) delta -= 360;
+          if (delta < -180) delta += 360;
+
+          // Interpolate
+          const interpolatedHeading = this._lastHeading + delta * 0.1; // Adjust 0.1 for faster/slower smoothing
+          this._lastHeading = interpolatedHeading;
+          return interpolatedHeading;
+        },
       });
 
       const pathLayer = new deck.PathLayer({
