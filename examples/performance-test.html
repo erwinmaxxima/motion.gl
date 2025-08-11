@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Performance Test - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+    }
+    button { margin:4px 2px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Performance Test</strong><br>
+    <p>Create 100 objects with 50 waypoints each.</p>
+    <button id="run-test">Run Creation Test</button>
+    <div id="test-results"></div>
+    <hr>
+    <strong>Animation Controls</strong><br>
+    <button id="start-all">Start All</button>
+    <button id="stop-all">Stop All</button>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.1],
+  zoom: 8
+});
+
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay);
+const allMotionObjects = [];
+
+/* ---------------------------
+   Performance Test Logic
+   --------------------------- */
+
+function generateRandomPath(numPoints, centerLat, centerLon, radius) {
+    const path = [];
+    for (let i = 0; i < numPoints; i++) {
+        const lat = centerLat + (Math.random() - 0.5) * 2 * radius;
+        const lon = centerLon + (Math.random() - 0.5) * 2 * radius;
+        path.push([lat, lon]);
+    }
+    return path;
+}
+
+function runCreationTest() {
+    // Clear previous objects
+    allMotionObjects.forEach(obj => motionManager.remove(obj._obj.id));
+    allMotionObjects.length = 0;
+    document.getElementById('test-results').innerText = 'Running test...';
+
+    const NUM_OBJECTS = 100;
+    const NUM_WAYPOINTS = 50;
+    const MAP_CENTER = [-7.1, 112.8];
+    const RADIUS = 0.5;
+
+    const startTime = performance.now();
+
+    for (let i = 0; i < NUM_OBJECTS; i++) {
+        const randomPath = generateRandomPath(NUM_WAYPOINTS, MAP_CENTER[0], MAP_CENTER[1], RADIUS);
+        const motionObject = L.motion.polyline(randomPath, {
+            auto: false,
+            duration: 10000, // 10 seconds
+            color: `#${Math.floor(Math.random()*16777215).toString(16)}` // random color
+        }, motionManager);
+        allMotionObjects.push(motionObject);
+    }
+
+    const endTime = performance.now();
+    const duration = endTime - startTime;
+
+    const results = `Created ${NUM_OBJECTS} objects in ${duration.toFixed(2)} ms.`;
+    document.getElementById('test-results').innerText = results;
+    console.log(results);
+}
+
+document.getElementById('run-test').onclick = runCreationTest;
+
+document.getElementById('start-all').onclick = () => {
+    allMotionObjects.forEach(obj => obj.motionStart());
+};
+
+document.getElementById('stop-all').onclick = () => {
+    allMotionObjects.forEach(obj => obj.motionEnd());
+};
+
+</script>
+</body>
+</html>
