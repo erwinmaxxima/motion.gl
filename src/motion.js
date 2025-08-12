@@ -169,6 +169,7 @@ class MotionObject {
 
     if (easedOffset <= 0) {
       const s = this.segments[0];
+      // Heading dari posisi awal ke titik berikutnya
       return { lat: s.lat1, lon: s.lon1, heading: this._headingBetween(s.lat1, s.lon1, s.lat2, s.lon2) };
     }
 
@@ -177,26 +178,17 @@ class MotionObject {
       if (remaining <= seg.d) {
         const t = seg.d === 0 ? 0 : (remaining / seg.d);
         const [lat, lon] = interpolateLatLon(seg.lat1, seg.lon1, seg.lat2, seg.lon2, t);
-        const heading = this._headingBetween(seg.lat1, seg.lon1, seg.lat2, seg.lon2);
+        // Heading dari posisi interpolasi ke titik berikutnya (ujung segmen)
+        const heading = this._headingBetween(lat, lon, seg.lat2, seg.lon2);
         return { lat, lon, heading };
       }
       remaining -= seg.d;
     }
 
+    // Untuk posisi terakhir, heading dari titik sebelumnya ke titik terakhir
     const last = this.path[this.path.length-1];
     const prev = this.path[this.path.length-2];
     return { lat: last.lat, lon: last.lon, heading: this._headingBetween(prev.lat, prev.lon, last.lat, last.lon) };
-  }
-
-  addWaypoint(lat, lon) {
-    this.path.push({ lat, lon });
-    if (this.path.length > 1) {
-        const a = this.path[this.path.length - 2];
-        const b = this.path[this.path.length - 1];
-        const d = haversineMeters(a.lat, a.lon, b.lat, b.lon);
-        this.segments.push({ d, lat1: a.lat, lon1: a.lon, lat2: b.lat, lon2: b.lon });
-        this.totalDistance += d;
-    }
   }
 
   getTraveledPath() {
@@ -239,7 +231,7 @@ class MotionObject {
     const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
               Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
     let brng = Math.atan2(y, x);
-    brng = (toDeg(brng) + 360) % 360;
+    brng = (360-toDeg(brng)) % 360;
     return brng;
   }
 }
@@ -253,20 +245,13 @@ class MotionManager {
         getIcon: d => 'plane',
         getSize: d => 48,
         pathWidth: 5,
-        pathColor: [255, 0, 0, 255],
-        onClick: () => {},
-        onHover: () => {}
+        pathColor: [255, 0, 0, 255]
     }, options);
     this.objects = new Map();
     this._lastTs = null;
     this._running = false;
     this._lastHeading = 0;
-    this.selectedObjectId = null;
     this._startLoop();
-  }
-
-  setSelectedObjectId(id) {
-    this.selectedObjectId = id;
   }
 
   add(id, pathCoords, options, isClosedPath) {
@@ -296,87 +281,53 @@ class MotionManager {
   }
 
   render() {
-      const iconData = [];
-      const pathData = [];
+    const iconData = [];
+    const pathData = [];
 
-      for (const [id, obj] of this.objects.entries()) {
-        if (!obj.visible) continue;
-        const p = obj.currentPosition();
-        iconData.push({
-          id,
-          position: [p.lon, p.lat],
-          heading: p.heading,
-          object: obj
-        });
-
-        pathData.push({
-            path: obj.getTraveledPath(),
-            color: hexToRgb(obj.options.color),
-            width: obj.options.width
-        })
-      }
-
-      const iconLayer = new deck.IconLayer({
-        id: 'motion-icons',
-        data: iconData,
-        pickable: true,
-        iconAtlas: this.options.iconAtlas,
-        iconMapping: this.options.iconMapping,
-        getIcon: this.options.getIcon,
-        getPosition: d => d.position,
-        getSize: this.options.getSize,
-        sizeScale: 1,
-        getAngle: d => {
-          const newHeading = d.heading || 0;
-          let delta = newHeading - this._lastHeading;
-
-          // Ensure smooth transition over 360/0 degree boundary
-          if (delta > 180) delta -= 360;
-          if (delta < -180) delta += 360;
-
-          // Interpolate
-          const interpolatedHeading = this._lastHeading + delta * 0.1; // Adjust 0.1 for faster/slower smoothing
-          this._lastHeading = interpolatedHeading;
-          return interpolatedHeading;
-        },
-        onClick: this.options.onClick,
-        onHover: this.options.onHover,
+    for (const [id, obj] of this.objects.entries()) {
+      if (!obj.visible) continue;
+      const p = obj.currentPosition();
+      // Simpan _lastHeading per objek (di obj)
+      if (typeof obj._lastHeading !== 'number') obj._lastHeading = p.heading || 0;
+      iconData.push({
+        id,
+        position: [p.lon, p.lat],
+        heading: p.heading,
+        object: obj
       });
 
-      const traveledPathLayer = new deck.PathLayer({
-        id: 'motion-paths',
-        data: pathData,
-        getPath: d => d.path,
-        getColor: d => d.color,
-        getWidth: d => d.width,
-        widthMinPixels: 2
+      pathData.push({
+        path: obj.getTraveledPath(),
+        color: hexToRgb(obj.options.color),
+        width: obj.options.width
       });
+    }
 
-      const layers = [traveledPathLayer, iconLayer];
+    const iconLayer = new deck.IconLayer({
+      id: 'motion-icons',
+      data: iconData,
+      pickable: true,
+      iconAtlas: this.options.iconAtlas,
+      iconMapping: this.options.iconMapping,
+      getIcon: this.options.getIcon,
+      getPosition: d => d.position,
+      getSize: this.options.getSize,
+      sizeScale: 1,
+	  getAngle: d => d.heading || 0,
+    });
 
-      if (this.selectedObjectId) {
-        const selectedObj = this.objects.get(this.selectedObjectId);
-        if (selectedObj && selectedObj.path.length > 1) {
-            const fullPathData = [{
-                path: selectedObj.path.map(p => [p.lon, p.lat]),
-                color: hexToRgb(selectedObj.options.color),
-                width: selectedObj.options.width
-            }];
-            const fullPathLayer = new deck.PathLayer({
-                id: 'motion-full-path',
-                data: fullPathData,
-                getPath: d => d.path,
-                getColor: d => d.color,
-                getWidth: d => d.width,
-                widthMinPixels: 2
-            });
-            layers.push(fullPathLayer);
-        }
-      }
+    const pathLayer = new deck.PathLayer({
+      id: 'motion-paths',
+      data: pathData,
+      getPath: d => d.path,
+      getColor: d => d.color,
+      getWidth: d => d.width,
+      widthMinPixels: 2
+    });
 
-      const existingLayers = (this.overlay.props && this.overlay.props.layers) ? this.overlay.props.layers : [];
-      const withoutPrev = existingLayers.filter(l => l.id !== 'motion-icons' && l.id !== 'motion-paths' && l.id !== 'motion-full-path');
-      this.overlay.setProps({ layers: [...withoutPrev, ...layers] });
+    const existingLayers = (this.overlay.props && this.overlay.props.layers) ? this.overlay.props.layers : [];
+    const withoutPrev = existingLayers.filter(l => l.id !== 'motion-icons' && l.id !== 'motion-paths');
+    this.overlay.setProps({ layers: [...withoutPrev, pathLayer, iconLayer] });
   }
 
   stop() {
