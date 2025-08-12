@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MotionGL: Object Waypoint Example</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; background: #f4f4f4; }
+    #controls { background: #fff; padding: 16px; box-shadow: 0 2px 4px #0001; }
+    #canvas { background: #222; display: block; margin: 24px auto; border-radius: 8px; }
+    .waypoint-list { margin: 8px 0; }
+    .object-list { margin: 8px 0; }
+    button { margin-right: 8px; }
+    input[type=number] { width: 60px; }
+  </style>
+</head>
+<body>
+  <div id="controls">
+    <label>Waktu (detik): <input type="number" id="duration" value="3" min="0.1" step="0.1"></label>
+    <label>Waypoint X: <input type="number" id="wp-x" value="100"></label>
+    <label>Waypoint Y: <input type="number" id="wp-y" value="100"></label>
+    <button id="add-waypoint">Tambah Waypoint</button>
+    <button id="clear-waypoints">Hapus Semua Waypoint</button>
+    <div class="waypoint-list" id="waypoint-list"></div>
+    <button id="create-object">Buat Object</button>
+    <button id="delete-object">Hapus Object</button>
+    <div class="object-list" id="object-list"></div>
+  </div>
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <script type="module">
+    import Motion from '../src/motion.js';
+    // Helper: draw circle
+    function drawCircle(ctx, x, y, r, color) {
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+
+    // State
+    let waypoints = [];
+    let objects = [];
+    let selectedObject = null;
+    let animation = null;
+
+    // DOM
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const durationInput = document.getElementById('duration');
+    const wpX = document.getElementById('wp-x');
+    const wpY = document.getElementById('wp-y');
+    const addWpBtn = document.getElementById('add-waypoint');
+    const clearWpBtn = document.getElementById('clear-waypoints');
+    const wpList = document.getElementById('waypoint-list');
+    const createObjBtn = document.getElementById('create-object');
+    const delObjBtn = document.getElementById('delete-object');
+    const objList = document.getElementById('object-list');
+
+    // Waypoint logic
+    function updateWaypointList() {
+      wpList.innerHTML = waypoints.map((wp, i) =>
+        `<span>[${wp.x}, ${wp.y}]</span>`
+      ).join(' → ');
+    }
+    addWpBtn.onclick = () => {
+      waypoints.push({ x: Number(wpX.value), y: Number(wpY.value) });
+      updateWaypointList();
+    };
+    clearWpBtn.onclick = () => {
+      waypoints = [];
+      updateWaypointList();
+    };
+
+    // Object logic
+    function updateObjectList() {
+      objList.innerHTML = objects.map((obj, i) =>
+        `<button onclick="selectObject(${i})">Objek ${i+1}</button>`
+      ).join(' ');
+    }
+    window.selectObject = (i) => {
+      selectedObject = objects[i];
+      animateObject(selectedObject);
+    };
+    createObjBtn.onclick = () => {
+      if (waypoints.length < 2) {
+        alert('Minimal 2 waypoint!');
+        return;
+      }
+      const obj = {
+        waypoints: waypoints.map(wp => ({...wp})),
+        duration: Number(durationInput.value),
+        t: 0,
+        color: `hsl(${Math.random()*360},80%,60%)`
+      };
+      objects.push(obj);
+      selectedObject = obj;
+      updateObjectList();
+      animateObject(obj);
+    };
+    delObjBtn.onclick = () => {
+      if (!selectedObject) return;
+      objects = objects.filter(o => o !== selectedObject);
+      selectedObject = null;
+      updateObjectList();
+      draw();
+    };
+
+    // Animation logic
+    function animateObject(obj) {
+      if (animation) cancelAnimationFrame(animation);
+      let start = null;
+      function step(ts) {
+        if (!start) start = ts;
+        obj.t = Math.min((ts - start) / (obj.duration * 1000), 1);
+        draw();
+        if (obj.t < 1) {
+          animation = requestAnimationFrame(step);
+        }
+      }
+      requestAnimationFrame(step);
+    }
+
+    // Draw everything
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // Draw all objects
+      for (const obj of objects) {
+        // Draw path
+        ctx.strokeStyle = obj.color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(obj.waypoints[0].x, obj.waypoints[0].y);
+        for (let i = 1; i < obj.waypoints.length; i++) {
+          ctx.lineTo(obj.waypoints[i].x, obj.waypoints[i].y);
+        }
+        ctx.stroke();
+        // Draw waypoints
+        for (const wp of obj.waypoints) {
+          drawCircle(ctx, wp.x, wp.y, 5, obj.color);
+        }
+        // Draw moving object
+        const pos = getPosition(obj);
+        drawCircle(ctx, pos.x, pos.y, 12, obj.color);
+      }
+    }
+    // Linear interpolation along waypoints
+    function getPosition(obj) {
+      const t = obj.t;
+      const n = obj.waypoints.length - 1;
+      if (t >= 1) return obj.waypoints[n];
+      const total = n;
+      const seg = Math.floor(t * total);
+      const segT = (t * total) - seg;
+      const a = obj.waypoints[seg];
+      const b = obj.waypoints[seg+1];
+      return {
+        x: a.x + (b.x - a.x) * segT,
+        y: a.y + (b.y - a.y) * segT
+      };
+    }
+    draw();
+  </script>
+</body>
+</html>

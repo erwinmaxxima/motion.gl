@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Object Waypoint Create/Delete - MotionLayer Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+  <script src="../src/motion.pathutil.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; right: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      min-width: 220px;
+    }
+    select, button, input { margin:4px 2px; }
+    .object-list { margin: 8px 0; }
+    .object-item { margin-bottom: 4px; }
+    .object-item.selected { font-weight: bold; color: #0077cc; }
+    .waypoint-list { font-size: 0.95em; color: #444; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <button id="add-object">Add Object</button>
+    <button id="delete-object">Delete Selected</button>
+    <div class="object-list" id="object-list"></div>
+    <div>
+      <label>Duration (ms): <input type="number" id="duration" value="5000" min="1000" step="500" style="width:80px"></label>
+      <button id="update-duration">Set Duration</button>
+    </div>
+    <div style="margin-top:8px;">
+      <strong>Instructions:</strong>
+      <ul style="margin:4px 0 0 16px; padding:0;">
+        <li>Klik "Add Object" untuk membuat objek baru</li>
+        <li>Pilih objek, lalu klik pada peta untuk menambah waypoint</li>
+        <li>Set duration untuk mengatur kecepatan animasi</li>
+        <li>Klik "Delete Selected" untuk menghapus objek</li>
+      </ul>
+    </div>
+  </div>
+
+<script>
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.2],
+  zoom: 9
+});
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+const motionManager = new MotionManager(overlay);
+
+let objects = [];
+let selectedObjectId = null;
+
+function renderObjectList() {
+  const listDiv = document.getElementById('object-list');
+  listDiv.innerHTML = '';
+  objects.forEach(obj => {
+    const div = document.createElement('div');
+    div.className = 'object-item' + (obj.id === selectedObjectId ? ' selected' : '');
+    div.textContent = `Object ${obj.id}`;
+    div.onclick = () => { selectedObjectId = obj.id; renderObjectList(); };
+    // Show waypoints
+    const wp = document.createElement('div');
+    wp.className = 'waypoint-list';
+    wp.textContent = 'Waypoints: ' + obj.path.length;
+    div.appendChild(wp);
+    listDiv.appendChild(div);
+  });
+}
+
+function addObject() {
+  const id = Date.now();
+  const color = '#'+Math.floor(Math.random()*16777215).toString(16).padStart(6,'0');
+  const obj = {
+    id,
+    path: [],
+    duration: parseInt(document.getElementById('duration').value, 10),
+	turn : 'normal',
+    color,
+    motion: null
+  };
+  objects.push(obj);
+  selectedObjectId = id;
+  renderObjectList();
+}
+
+function deleteSelectedObject() {
+  if (!selectedObjectId) return;
+  const idx = objects.findIndex(o => o.id === selectedObjectId);
+  if (idx !== -1) {
+    const obj = objects[idx];
+    if (obj.motion) motionManager.remove(obj.motion._obj.id);
+    objects.splice(idx, 1);
+    selectedObjectId = null;
+    renderObjectList();
+  }
+}
+
+function updateDuration() {
+  const dur = parseInt(document.getElementById('duration').value, 10);
+  if (!selectedObjectId) return;
+  const obj = objects.find(o => o.id === selectedObjectId);
+  if (obj) {
+    obj.duration = dur;
+    if (obj.motion) {
+      obj.motion.setDuration(dur);
+    }
+  }
+}
+
+function updateMotion(obj) {
+  if (obj.motion) motionManager.remove(obj.motion._obj.id);
+  if (obj.path.length < 2) return;
+  obj.motion = L.motion.path(obj.path, {
+    auto: true,
+    duration: obj.duration,
+    color: obj.color,
+		turn : 'normal'
+
+  }, motionManager);
+  obj.motion.setLoop(true);
+}
+
+map.on('click', function(e) {
+  if (!selectedObjectId) return;
+  const obj = objects.find(o => o.id === selectedObjectId);
+  if (!obj) return;
+  // Add waypoint
+  obj.path.push([e.lngLat.lat, e.lngLat.lng]);
+  updateMotion(obj);
+  renderObjectList();
+});
+
+document.getElementById('add-object').onclick = addObject;
+document.getElementById('delete-object').onclick = deleteSelectedObject;
+document.getElementById('update-duration').onclick = updateDuration;
+
+document.getElementById('duration').onkeydown = function(e) {
+  if (e.key === 'Enter') updateDuration();
+};
+
+renderObjectList();
+</script>
+</body>
+</html>
