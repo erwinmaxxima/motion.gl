@@ -188,6 +188,17 @@ class MotionObject {
     return { lat: last.lat, lon: last.lon, heading: this._headingBetween(prev.lat, prev.lon, last.lat, last.lon) };
   }
 
+  addWaypoint(lat, lon) {
+    this.path.push({ lat, lon });
+    if (this.path.length > 1) {
+        const a = this.path[this.path.length - 2];
+        const b = this.path[this.path.length - 1];
+        const d = haversineMeters(a.lat, a.lon, b.lat, b.lon);
+        this.segments.push({ d, lat1: a.lat, lon1: a.lon, lat2: b.lat, lon2: b.lon });
+        this.totalDistance += d;
+    }
+  }
+
   getTraveledPath() {
     const traveledPath = [];
 
@@ -242,13 +253,20 @@ class MotionManager {
         getIcon: d => 'plane',
         getSize: d => 48,
         pathWidth: 5,
-        pathColor: [255, 0, 0, 255]
+        pathColor: [255, 0, 0, 255],
+        onClick: () => {},
+        onHover: () => {}
     }, options);
     this.objects = new Map();
     this._lastTs = null;
     this._running = false;
     this._lastHeading = 0;
+    this.selectedObjectId = null;
     this._startLoop();
+  }
+
+  setSelectedObjectId(id) {
+    this.selectedObjectId = id;
   }
 
   add(id, pathCoords, options, isClosedPath) {
@@ -321,9 +339,11 @@ class MotionManager {
           this._lastHeading = interpolatedHeading;
           return interpolatedHeading;
         },
+        onClick: this.options.onClick,
+        onHover: this.options.onHover,
       });
 
-      const pathLayer = new deck.PathLayer({
+      const traveledPathLayer = new deck.PathLayer({
         id: 'motion-paths',
         data: pathData,
         getPath: d => d.path,
@@ -332,9 +352,31 @@ class MotionManager {
         widthMinPixels: 2
       });
 
+      const layers = [traveledPathLayer, iconLayer];
+
+      if (this.selectedObjectId) {
+        const selectedObj = this.objects.get(this.selectedObjectId);
+        if (selectedObj && selectedObj.path.length > 1) {
+            const fullPathData = [{
+                path: selectedObj.path.map(p => [p.lon, p.lat]),
+                color: hexToRgb(selectedObj.options.color),
+                width: selectedObj.options.width
+            }];
+            const fullPathLayer = new deck.PathLayer({
+                id: 'motion-full-path',
+                data: fullPathData,
+                getPath: d => d.path,
+                getColor: d => d.color,
+                getWidth: d => d.width,
+                widthMinPixels: 2
+            });
+            layers.push(fullPathLayer);
+        }
+      }
+
       const existingLayers = (this.overlay.props && this.overlay.props.layers) ? this.overlay.props.layers : [];
-      const withoutPrev = existingLayers.filter(l => l.id !== 'motion-icons' && l.id !== 'motion-paths');
-      this.overlay.setProps({ layers: [...withoutPrev, pathLayer, iconLayer] });
+      const withoutPrev = existingLayers.filter(l => l.id !== 'motion-icons' && l.id !== 'motion-paths' && l.id !== 'motion-full-path');
+      this.overlay.setProps({ layers: [...withoutPrev, ...layers] });
   }
 
   stop() {

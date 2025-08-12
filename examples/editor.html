@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Motion Editor - Deck.gl + MapLibre</title>
+
+  <!-- MapLibre + Deck.gl -->
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+
+  <!-- Motion Library -->
+  <script src="../src/motion.js"></script>
+  <script src="../src/motion.easing.js"></script>
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+    #controls {
+      position: absolute; left: 12px; top: 12px; z-index: 9999;
+      background: rgba(255,255,255,0.95); padding:8px; border-radius:6px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+      width: 200px;
+    }
+    button { margin:4px 2px; width: calc(100% - 4px); }
+    .info { font-size: 0.9em; margin-top: 8px; border-top: 1px solid #ccc; padding-top: 8px; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="controls">
+    <strong>Editor Controls</strong><br>
+    <button id="btn-create">Create Object</button>
+    <div class="info" id="info-panel">
+      Current Mode: Idle
+    </div>
+  </div>
+
+<script>
+/* ---------------------------
+   Setup MapLibre + Deck.gl Overlay
+   --------------------------- */
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://demotiles.maplibre.org/style.json',
+  center: [112.8, -7.1],
+  zoom: 8
+});
+
+const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+map.addControl(overlay);
+
+/* ---------------------------
+   Initialize Motion Manager
+   --------------------------- */
+const motionManager = new MotionManager(overlay, {
+    // Make icons pickable
+    onHover: (info) => {
+        hoveredObjectId = info.object ? info.object.id : null;
+        map.getCanvas().style.cursor = info.object ? 'pointer' : 'grab';
+    },
+    onClick: (info, event) => {
+        handleMapClick(info);
+    }
+});
+
+/* ---------------------------
+   Editor State
+   --------------------------- */
+let currentMode = 'idle'; // 'idle', 'creating-object', 'drawing-waypoints'
+let selectedObjectId = null;
+let hoveredObjectId = null;
+
+const infoPanel = document.getElementById('info-panel');
+
+function setMode(mode) {
+    currentMode = mode;
+    console.log("Mode changed to:", mode);
+    updateInfoPanel();
+
+    const mapCanvas = map.getCanvas();
+    if (mode === 'creating-object') {
+        mapCanvas.style.cursor = 'crosshair';
+    } else {
+        mapCanvas.style.cursor = 'grab';
+    }
+}
+
+function updateInfoPanel() {
+    let message = `Mode: <strong>${currentMode}</strong>`;
+    if (currentMode === 'drawing-waypoints' && selectedObjectId) {
+        message += `<br>Selected: <strong>${selectedObjectId}</strong>`;
+    }
+    infoPanel.innerHTML = message;
+}
+
+
+/* ---------------------------
+   Event Handlers
+   --------------------------- */
+document.getElementById('btn-create').onclick = () => {
+    setMode('creating-object');
+};
+
+// We need to handle clicks on the map canvas itself
+map.on('click', (e) => {
+    // This event gives us the lngLat of the click
+    handleMapClick(null, e);
+});
+
+function handleMapClick(info, event) {
+    // If an icon was clicked, `info.object` will be populated
+    const clickedObjectData = info ? info.object : null;
+    const coords = event ? [event.lngLat.lng, event.lngLat.lat] : null;
+
+    if (currentMode === 'creating-object' && coords) {
+        const newId = 'obj' + Date.now();
+        motionManager.add(newId, [[coords[1], coords[0]]], { color: '#00ff00', width: 3 });
+        console.log("Created new object:", newId);
+        setMode('idle');
+        return;
+    }
+
+    if (clickedObjectData) {
+        // Logic for selecting an object and starting waypoint drawing
+        selectedObjectId = clickedObjectData.id;
+        motionManager.setSelectedObjectId(selectedObjectId);
+        setMode('drawing-waypoints');
+
+    } else if (currentMode === 'drawing-waypoints' && selectedObjectId && coords) {
+        // Logic for adding a waypoint
+        const motionObject = motionManager.get(selectedObjectId);
+        if (motionObject) {
+            motionObject.addWaypoint(coords[1], coords[0]);
+            console.log(`Added waypoint to ${selectedObjectId} at`, coords);
+        }
+    }
+}
+
+// Right-click to finish drawing or delete
+map.getCanvas().addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+
+    if (currentMode === 'drawing-waypoints') {
+        console.log(`Finished drawing for ${selectedObjectId}`);
+        motionManager.setSelectedObjectId(null);
+        selectedObjectId = null;
+        setMode('idle');
+    } else if (hoveredObjectId) {
+        // If right-clicking on an object (and not drawing), delete it.
+        if (confirm(`Are you sure you want to delete object ${hoveredObjectId}?`)) {
+            motionManager.remove(hoveredObjectId);
+            if (selectedObjectId === hoveredObjectId) {
+                selectedObjectId = null;
+                motionManager.setSelectedObjectId(null);
+            }
+            hoveredObjectId = null;
+            console.log("Deleted object:", hoveredObjectId);
+        }
+    }
+});
+
+
+// Initial setup
+updateInfoPanel();
+
+</script>
+</body>
+</html>
