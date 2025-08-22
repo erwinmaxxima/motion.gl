@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MotionGL Command Example</title>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/deck.gl@9.0.32/dist.min.js"></script>
+  <script src="../src/motion.pathutil.js"></script>
+  <script src="../src/motion.easing.js"></script>
+  <script src="../src/motion.js"></script>
+  <style>
+    body { margin:0; padding:0; }
+    #map { position:absolute; left:0; right:0; top:0; bottom:0; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <script>
+    const map = new maplibregl.Map({
+      container: 'map',
+      style: 'https://demotiles.maplibre.org/style.json',
+      center: [112.8, -7.1],
+      zoom: 8
+    });
+    const overlay = new deck.MapboxOverlay({ interleaved: true, layers: [] });
+    map.addControl(overlay);
+
+    const manager = new MotionManager(overlay);
+    const plane = L.motion.polyline([
+      [-7.10, 112.80, 0],
+      [-7.05, 112.90, 1000],
+      [-7.00, 113.05, 2000]
+    ], { speed: 200, auto: false }, manager);
+
+    plane.motionStart();
+
+    // contoh perintah langsung
+    setTimeout(() => plane.speedTo(400), 1000);
+    setTimeout(() => plane.headingTo(90), 2000);
+    setTimeout(() => plane.climbTo(3000), 3000);
+  </script>
+</body>
+</html>
