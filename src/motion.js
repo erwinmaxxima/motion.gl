@@ -47,7 +47,12 @@ class MotionObject {
       easing: L.Motion.Ease.linear,
       color: '#ff0000',
       width: 5,
-      turn: null // 'tight', 'normal', 'loose'
+      turn: null, // 'tight', 'normal', 'loose'
+      maxSpeed: 900, // km/h
+      accelRate: 10, // m/s^2
+      climbRate: 5, // m/s
+      turnRate: 30, // deg/s
+      simSpeed: 1
     }, options);
 
     if (this.options.turn && L.Motion.PathUtil) {
@@ -70,7 +75,7 @@ class MotionObject {
         }
     }
 
-    this.path = coords.map(p => ({ lat: p[0], lon: p[1] }));
+    this.path = coords.map(p => ({ lat: p[0], lon: p[1], alt: p[2] || 0, accel: p[3] || 1 }));
 
     this._events = new Map();
     this.segments = [];
@@ -78,7 +83,7 @@ class MotionObject {
     for (let i = 0; i < this.path.length - 1; i++) {
       const a = this.path[i], b = this.path[i+1];
       const d = haversineMeters(a.lat, a.lon, b.lat, b.lon);
-      this.segments.push({ d, lat1: a.lat, lon1: a.lon, lat2: b.lat, lon2: b.lon });
+      this.segments.push({ d, lat1: a.lat, lon1: a.lon, alt1: a.alt, lat2: b.lat, lon2: b.lon, alt2: b.alt, accel: b.accel });
       this.totalDistance += d;
     }
 
@@ -86,6 +91,17 @@ class MotionObject {
     this.paused = !this.options.auto;
     this.loop = false;
     this.visible = true;
+    this.currentSpeed = this.options.speed;
+    this.currentAlt = this.path[0] ? this.path[0].alt : 0;
+    this.currentHeading = 0;
+    this.commands = [];
+
+    this.params = {
+      maxSpeed: this.options.maxSpeed,
+      accelRate: this.options.accelRate,
+      climbRate: this.options.climbRate,
+      turnRate: this.options.turnRate
+    };
 
     if (this.options.auto) {
       this.motionStart();
@@ -133,20 +149,31 @@ class MotionObject {
 
   setLoop(flag) { this.loop = !!flag; return this; }
 
+  setSimSpeed(factor) { this.options.simSpeed = factor; return this; }
+  speedTo(s) { this.commands.push({ type: 'speed', target: s }); return this; }
+  headingTo(h) { this.commands.push({ type: 'heading', target: h }); return this; }
+  climbTo(a) { this.commands.push({ type: 'climb', target: a }); return this; }
+
   step(dt) {
     if (this.paused || this.totalDistance <= 0) return;
+
+    const simSpeed = this.options.simSpeed || 1;
+    if (simSpeed === 1) {
+        this._processCommands(dt);
+    }
 
     let speed_mps;
     if (this.options.duration > 0) {
         speed_mps = this.totalDistance / (this.options.duration / 1000);
-    } else if (this.options.speed > 0) {
+        this.currentSpeed = speed_mps * 3.6;
+    } else if (this.currentSpeed > 0) {
         // km/h to m/s
-        speed_mps = this.options.speed * 1000 / 3600;
+        speed_mps = this.currentSpeed * 1000 / 3600;
     } else {
         return; // no motion
     }
 
-    this.offsetMeters += speed_mps * dt;
+    this.offsetMeters += speed_mps * dt * simSpeed;
 
     if (this.offsetMeters >= this.totalDistance) {
       if (this.loop) {
@@ -160,8 +187,49 @@ class MotionObject {
     }
   }
 
+  _processCommands(dt) {
+    if (!this.commands.length) return;
+    const cmd = this.commands[0];
+    if (cmd.type === 'speed') {
+      const target = Math.min(cmd.target, this.params.maxSpeed);
+      const step = this.params.accelRate * dt * 3.6; // to km/h
+      if (Math.abs(this.currentSpeed - target) <= step) {
+        this.currentSpeed = target;
+        this.commands.shift();
+      } else if (this.currentSpeed < target) {
+        this.currentSpeed += step;
+      } else {
+        this.currentSpeed -= step;
+      }
+    } else if (cmd.type === 'heading') {
+      const diff = ((cmd.target - this.currentHeading + 540) % 360) - 180;
+      const step = this.params.turnRate * dt;
+      if (Math.abs(diff) <= step) {
+        this.currentHeading = (cmd.target + 360) % 360;
+        this.commands.shift();
+      } else {
+        this.currentHeading = (this.currentHeading + step * Math.sign(diff) + 360) % 360;
+      }
+    } else if (cmd.type === 'climb') {
+      const step = this.params.climbRate * dt;
+      if (Math.abs(this.currentAlt - cmd.target) <= step) {
+        this.currentAlt = cmd.target;
+        this.commands.shift();
+      } else if (this.currentAlt < cmd.target) {
+        this.currentAlt += step;
+      } else {
+        this.currentAlt -= step;
+      }
+    }
+  }
+
   currentPosition() {
-    if (this.path.length === 1) return { lat: this.path[0].lat, lon: this.path[0].lon, heading: 0 };
+    if (this.path.length === 1) {
+      const p = this.path[0];
+      if (!this.commands.some(c => c.type === 'heading')) this.currentHeading = 0;
+      if (!this.commands.some(c => c.type === 'climb')) this.currentAlt = p.alt;
+      return { lat: p.lat, lon: p.lon, heading: this.currentHeading, alt: this.currentAlt };
+    }
 
     let progress = this.totalDistance > 0 ? this.offsetMeters / this.totalDistance : 0;
     progress = this.options.easing(Math.min(1, Math.max(0, progress)));
@@ -169,8 +237,10 @@ class MotionObject {
 
     if (easedOffset <= 0) {
       const s = this.segments[0];
-      // Heading dari posisi awal ke titik berikutnya
-      return { lat: s.lat1, lon: s.lon1, heading: this._headingBetween(s.lat1, s.lon1, s.lat2, s.lon2) };
+      const headingFromPath = this._headingBetween(s.lat1, s.lon1, s.lat2, s.lon2);
+      if (!this.commands.some(c => c.type === 'heading')) this.currentHeading = headingFromPath;
+      if (!this.commands.some(c => c.type === 'climb')) this.currentAlt = s.alt1;
+      return { lat: s.lat1, lon: s.lon1, heading: this.currentHeading, alt: this.currentAlt };
     }
 
     let remaining = easedOffset;
@@ -178,17 +248,21 @@ class MotionObject {
       if (remaining <= seg.d) {
         const t = seg.d === 0 ? 0 : (remaining / seg.d);
         const [lat, lon] = interpolateLatLon(seg.lat1, seg.lon1, seg.lat2, seg.lon2, t);
-        // Heading dari posisi interpolasi ke titik berikutnya (ujung segmen)
-        const heading = this._headingBetween(lat, lon, seg.lat2, seg.lon2);
-        return { lat, lon, heading };
+        const alt = seg.alt1 + (seg.alt2 - seg.alt1) * t;
+        const headingFromPath = this._headingBetween(lat, lon, seg.lat2, seg.lon2);
+        if (!this.commands.some(c => c.type === 'heading')) this.currentHeading = headingFromPath;
+        if (!this.commands.some(c => c.type === 'climb')) this.currentAlt = alt;
+        return { lat, lon, heading: this.currentHeading, alt: this.currentAlt };
       }
       remaining -= seg.d;
     }
 
-    // Untuk posisi terakhir, heading dari titik sebelumnya ke titik terakhir
     const last = this.path[this.path.length-1];
     const prev = this.path[this.path.length-2];
-    return { lat: last.lat, lon: last.lon, heading: this._headingBetween(prev.lat, prev.lon, last.lat, last.lon) };
+    const headingFromPath = this._headingBetween(prev.lat, prev.lon, last.lat, last.lon);
+    if (!this.commands.some(c => c.type === 'heading')) this.currentHeading = headingFromPath;
+    if (!this.commands.some(c => c.type === 'climb')) this.currentAlt = last.alt;
+    return { lat: last.lat, lon: last.lon, heading: this.currentHeading, alt: this.currentAlt };
   }
 
   getTraveledPath() {
@@ -200,22 +274,23 @@ class MotionObject {
 
     if (remaining <= 0 && this.path.length > 0) {
         const firstPoint = this.path[0];
-        return [[firstPoint.lon, firstPoint.lat]];
+        return [[firstPoint.lon, firstPoint.lat, firstPoint.alt]];
     }
 
     for (const seg of this.segments) {
       if (traveledPath.length === 0) {
-        traveledPath.push([seg.lon1, seg.lat1]);
+        traveledPath.push([seg.lon1, seg.lat1, seg.alt1]);
       }
 
       if (remaining < seg.d) {
         const t = seg.d === 0 ? 0 : (remaining / seg.d);
         const [lat, lon] = interpolateLatLon(seg.lat1, seg.lon1, seg.lat2, seg.lon2, t);
-        traveledPath.push([lon, lat]);
+        const alt = seg.alt1 + (seg.alt2 - seg.alt1) * t;
+        traveledPath.push([lon, lat, alt]);
         break;
       }
 
-      traveledPath.push([seg.lon2, seg.lat2]);
+      traveledPath.push([seg.lon2, seg.lat2, seg.alt2]);
       remaining -= seg.d;
 
       if (remaining <= 0) {
@@ -291,7 +366,7 @@ class MotionManager {
       if (typeof obj._lastHeading !== 'number') obj._lastHeading = p.heading || 0;
       iconData.push({
         id,
-        position: [p.lon, p.lat],
+        position: [p.lon, p.lat, p.alt],
         heading: p.heading,
         object: obj
       });
@@ -457,6 +532,10 @@ var L;
             on: (evt, cb) => { obj.on(evt, cb); return wrapper; },
             setLoop: (f) => { obj.setLoop(f); return wrapper; },
             setVisible: (v) => { obj.visible = !!v; return wrapper; },
+            setSimSpeed: (f) => { obj.setSimSpeed(f); return wrapper; },
+            speedTo: (s) => { obj.speedTo(s); return wrapper; },
+            headingTo: (h) => { obj.headingTo(h); return wrapper; },
+            climbTo: (a) => { obj.climbTo(a); return wrapper; },
             getMarker: () => ({ getObject: () => obj }),
             getMarkers: () => ([wrapper.getMarker()]),
             _obj: obj
